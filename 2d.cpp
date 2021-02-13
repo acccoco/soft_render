@@ -171,7 +171,7 @@ bool is_in_triangle(Vec2i A, Vec2i B, Vec2i C, Vec2i P) {
 
 
 // 由于存在浮点误差，边界上的某些点可能无法被正确渲染
-void triangle_barycentric(Vec2i v1, Vec2i v2, Vec2i v3, TGAImage &image, TGAColor &color) {
+void triangle_barycentric(Vec2i v1, Vec2i v2, Vec2i v3, TGAImage &image, const TGAColor &color) {
     // 寻找三角形的矩形边界，注意不能超过画布的边界
     Vec2i canvas(image.get_width() - 1, image.get_height() - 1);
     Vec2i boundry_min(canvas.x, canvas.y);
