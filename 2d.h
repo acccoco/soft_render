@@ -16,4 +16,7 @@ void triangle_line_sweep(Vec2i v1, Vec2i v2, Vec2i v3, TGAImage &image, TGAColor
 void triangle_barycentric(Vec2i v1, Vec2i v2, Vec2i v3, TGAImage &image, const TGAColor &color);
 
 
+void triangle_z_buffer(Vec3f A, Vec3f B, Vec3f C,
+                       std::vector<std::vector<float>> &z_buffer, TGAImage &image, const TGAColor & color);
+
 #endif //TINYRENDERER_2D_H

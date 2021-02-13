@@ -4,20 +4,22 @@
 #include <vector>
 #include "2d.h"
 
+using namespace std;
+
 /*  绘制直线：取整版本 */
 void line_int(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor &color) {
     // 确保 x0 - x1 是最长的
     bool is_tranpose = false;
-    if (std::abs(x0 - x1) < std::abs(y0 - y1)) {
+    if (abs(x0 - x1) < abs(y0 - y1)) {
         is_tranpose = true;
-        std::swap(x0, y0);
-        std::swap(x1, y1);
+        swap(x0, y0);
+        swap(x1, y1);
     }
 
     // 确保 x0 <= x1
     if (x0 > x1) {
-        std::swap(x0, x1);
-        std::swap(y0, y1);
+        swap(x0, x1);
+        swap(y0, y1);
     }
 
     /* 绘制：直接取整数版本 */
@@ -37,16 +39,16 @@ void line_int(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor &color) 
 void line_round(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor &color) {
     // 确保 x0 - x1 是最长的
     bool is_tranpose = false;
-    if (std::abs(x0 - x1) < std::abs(y0 - y1)) {
+    if (abs(x0 - x1) < abs(y0 - y1)) {
         is_tranpose = true;
-        std::swap(x0, y0);
-        std::swap(x1, y1);
+        swap(x0, y0);
+        swap(x1, y1);
     }
 
     // 确保 x0 <= x1
     if (x0 > x1) {
-        std::swap(x0, x1);
-        std::swap(y0, y1);
+        swap(x0, x1);
+        swap(y0, y1);
     }
 
 
@@ -54,7 +56,7 @@ void line_round(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor &color
 #if flase
     int dx = x1 - x0;
     int dy = y1 - y0;
-    float d_error = std::abs(dy / float(dx));
+    float d_error = abs(dy / float(dx));
     float error = 0;
     int y = y0;
 
@@ -76,7 +78,7 @@ void line_round(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor &color
     int dx = x1 - x0;
     int dy = y1 - y0;
     // d_error 是理解的关键，原版是 dy/dx，为了消除浮点数才出现这个值的
-    int d_error = std::abs(dy) * 2;
+    int d_error = abs(dy) * 2;
     int error = 0;
     int y = y0;
     const int y_incr = (y1 > y0 ? 1 : -1);
@@ -103,7 +105,7 @@ void horizon_line(int x1, int x2, int y, TGAImage &image, TGAColor &color) {
 
     // 确保 x1 <= x2
     if (x1 > x2)
-        std::swap(x1, x2);
+        swap(x1, x2);
 
     // 绘制
     for (int x = x1; x <= x2; ++x)
@@ -115,7 +117,7 @@ void horizon_line(int x1, int x2, int y, TGAImage &image, TGAColor &color) {
 Vec2i intersection(Vec2i v1, Vec2i v2, int y) {
     assert(v1.y != v2.y);           // 除零异常
 
-    float t = std::abs(float(y - v1.y)) / std::abs(v1.y - v2.y);
+    float t = abs(float(y - v1.y)) / abs(v1.y - v2.y);
     return v1 + (v2 - v1) * t;
 }
 
@@ -125,9 +127,9 @@ void triangle_line_sweep(Vec2i v1, Vec2i v2, Vec2i v3, TGAImage &image, TGAColor
     if (v1.x == v2.x && v2.x == v3.x) return;
 
     /* 排序 y 坐标， v1.y < v2.y < v3.y */
-    if (v1.y > v2.y) std::swap(v1, v2);
-    if (v1.y > v3.y) std::swap(v1, v3);
-    if (v2.y > v3.y) std::swap(v2, v3);
+    if (v1.y > v2.y) swap(v1, v2);
+    if (v1.y > v3.y) swap(v1, v3);
+    if (v2.y > v3.y) swap(v2, v3);
 
     /* 上半部分：y ∈ (v2.y, v3.y] */
     for (int y = v2.y; y <= v3.y; ++y) {
@@ -170,17 +172,73 @@ bool is_in_triangle(Vec2i A, Vec2i B, Vec2i C, Vec2i P) {
 }
 
 
+/* 设直线 (P.x, P.y, ?) 和三角形 ABC 有交点为 P
+ * 并给出交点的向量表示
+ *      AP = u(AB) + v(AC)
+ *      即：P = (1 - u - v)A + uB + vC
+ *      即：P = [u, v, (1- u - v)] [A, B, C]T
+ */
+Vec3f barycentric(Vec3f A, Vec3f B, Vec3f C, Vec3i P) {
+    Vec3f vx(C.x - A.x, B.x - A.x, A.x - P.x);
+    Vec3f vy(C.y - A.y, B.y - A.y, A.y - P.y);
+    Vec3f v = cross(vx, vy);
+
+    // 当 A B C 在一条直线上时，v[2] 是0
+    if (abs(v.z) < 1e-2)
+        return {-1, 1, 1};
+    return {1.f - v.x / v.z - v.y / v.z, v.x / v.z, v.y / v.z};
+}
+
+void triangle_z_buffer(Vec3f A, Vec3f B, Vec3f C,
+                       vector<vector<float>> &z_buffer, TGAImage &image, const TGAColor & color) {
+    assert(image.get_height() == z_buffer.size());
+    assert(image.get_width() == z_buffer[0].size());
+
+    // 寻找三角形的矩形边界，注意不能超过画布的边界
+    Vec2i canvas(image.get_width() - 1, image.get_height() - 1);
+    Vec2f boundry_min(canvas.x, canvas.y);
+    Vec2f boundry_max(0, 0);
+    for (auto v : vector<Vec3f>({A, B, C})) {
+        boundry_min.x = max(0.f, min(boundry_min.x, v.x));
+        boundry_min.y = max(0.f, min(boundry_min.y, v.y));
+        boundry_max.x = min(float(canvas.x), max(boundry_max.x, v.x));
+        boundry_max.y = min(float(canvas.y), max(boundry_max.y, v.y));
+    }
+
+    // 对于矩形边界内的每一个点，判断是否在三角形内，并绘制
+    Vec3i P;
+    for (P.x = boundry_min.x; P.x <= boundry_max.x; ++P.x) {
+        for (P.y = boundry_min.y; P.y <= boundry_max.y; ++P.y) {
+            auto bary = barycentric(A, B, C, P);
+
+            // 判断是否在三角形内
+            if (bary.x < 0 || bary.y < 0 || bary.z < 0)
+                continue;
+
+            // z-buffer测试
+            float depth = 0;
+            for (auto v : vector<Vec3f>({A, B, C}))     // 计算 P 点的 z 值
+                depth += v.z;
+            if (z_buffer[P.y][P.x] < depth) {     // 摄像机朝向 -z 方向，所以 z 大的会覆盖 z 小的点
+                z_buffer[P.y][P.x] = depth;
+                image.set(P.x, P.y, color);
+            }
+        }
+    }
+}
+
+
 // 由于存在浮点误差，边界上的某些点可能无法被正确渲染
 void triangle_barycentric(Vec2i v1, Vec2i v2, Vec2i v3, TGAImage &image, const TGAColor &color) {
     // 寻找三角形的矩形边界，注意不能超过画布的边界
     Vec2i canvas(image.get_width() - 1, image.get_height() - 1);
     Vec2i boundry_min(canvas.x, canvas.y);
     Vec2i boundry_max(0, 0);
-    for (auto v : std::vector<Vec2i>({v1, v2, v3})) {
-        boundry_min.x = std::max(0, std::min(boundry_min.x, v.x));
-        boundry_min.y = std::max(0, std::min(boundry_min.y, v.y));
-        boundry_max.x = std::min(canvas.x, std::max(boundry_max.x, v.x));
-        boundry_max.y = std::min(canvas.y, std::max(boundry_max.y, v.y));
+    for (auto v : vector<Vec2i>({v1, v2, v3})) {
+        boundry_min.x = max(0, min(boundry_min.x, v.x));
+        boundry_min.y = max(0, min(boundry_min.y, v.y));
+        boundry_max.x = min(canvas.x, max(boundry_max.x, v.x));
+        boundry_max.y = min(canvas.y, max(boundry_max.y, v.y));
     }
 
     // 对于矩形边界内的每一个点，判断是否在三角形内，并绘制
