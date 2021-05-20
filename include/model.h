@@ -18,7 +18,8 @@ private:
     TGAImage specularmap_;        // specular map texture
     void load_texture(const std::string filename, const std::string suffix, TGAImage &img);
 public:
-    Model(const std::string filename);
+    Model() noexcept {}
+    explicit Model(const std::string filename);
     int nverts() const;
     int nfaces() const;
     vec3 normal(const int iface, const int nthvert) const;  // per triangle corner normal vertex

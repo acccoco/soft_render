@@ -1,172 +1,92 @@
 
 #include <random>
 #include <iostream>
-
-#include "2d.h"
 #include "model.h"
+#include "my_gl.h"
+#include "shader.h"
+#include "transform.h"
 
 using namespace std;
 
 
-// 全局变量
-// ============================================================================
-const int width = 800;
-const int height = 800;
+void render_obj() {
+    int width = 1024;
+    int height = 1024;
 
-// 绘制一个三角形
-static auto triangle = triangle_barycentric;
+    // 载入模型，材质文件
+    const char *model_filename = "../obj/diablo3_pose/diablo3_pose.obj";
+    const char *diffuse_filename = "../obj/diablo3_pose/diablo3_pose_diffuse.tga";
+    const char *normal_filename = "../obj/diablo3_pose/diablo3_pose_nm_tangent.tga";
+    const char *spec_filename = "../obj/diablo3_pose/diablo3_pose_spec.tga";
+    const char *tga_filename = "../render.tga";
+    Model model = Model(model_filename);
+    TGAImage diffuse_texture;
+    diffuse_texture.read_tga_file(diffuse_filename);
+    diffuse_texture.flip_vertically();
+    TGAImage normal_texture;
+    normal_texture.read_tga_file(normal_filename);
+    normal_texture.flip_vertically();
+    TGAImage spec_texture;
+    spec_texture.read_tga_file(spec_filename);
+    spec_texture.flip_vertically();
 
+    // 设置模型矩阵
+    auto rotate = rotate_y(0);
+    auto translate = translation(0, 0, -200);
+    auto scale = scaling(80);
+    auto model_matrix = translate * scale * rotate;
 
-/* 绘制三角形 */
-void test_draw_triangle() {
-    const char *tga_filename = "triangle.tga";
+    // image, view_port
+    TGAImage out_image(width, height, TGAImage::RGB);
+    auto z_buffer = vector<vector<z_buffer_t>>(height, vector<z_buffer_t>(width, Z_BUFFER_MAX));
+    view_port(0, 0, width, height);
 
-    TGAImage image = TGAImage(width, height, TGAImage::RGB);
-    TGAColor white = TGAColor(255, 255, 255, 255);
-
-    auto tri_1 = vector<Vec2i>({
-                                       Vec2i(0, 10),
-                                       Vec2i(50, 40),
-                                       Vec2i(30, 60)
-                               });
-    triangle(tri_1[0], tri_1[1], tri_1[2], image, white);
-
-
-    auto tri_2 = vector<Vec2i>({
-                                       Vec2i(0, 80),
-                                       Vec2i(20, 80),
-                                       Vec2i(20, 100)
-                               });
-    triangle(tri_2[0], tri_2[1], tri_2[2], image, white);
-
-
-    auto tri_3 = vector<Vec2i>({
-                                       Vec2i(0, 0),
-                                       Vec2i(10, 0),
-                                       Vec2i(10, 10)
-                               });
-    triangle(tri_3[0], tri_3[1], tri_3[2], image, white);
-
-    image.write_tga_file(tga_filename);
-}
-
-/* 使用三角形来绘制模型 */
-void draw_triangle_obj() {
-    const char *model_filename = "./obj/african_head.obj";
-    const char *model_tga_filename = "./triangle_obj.tga";
-
-    auto model = new Model(model_filename);
-    auto image = TGAImage(width, height, TGAImage::RGB);
-
-    default_random_engine e(3);
-    uniform_int_distribution<uint8_t> u(0, 255);
-
-    Vec2i screen_coords[3];
-    for (int i = 0; i < model->nfaces(); i++) {
-        for (int j = 0; j < 3; j++) {
-            auto world_coords = model->vert(i, j);
-            screen_coords[j] = Vec2i((world_coords.x + 1.) * width / 2., (world_coords.y + 1.) * height / 2.);
-        }
-        triangle(screen_coords[0], screen_coords[1], screen_coords[2], image,
-                 TGAColor(u(e), u(e), u(e), 255));
-    }
-
-    image.write_tga_file(model_tga_filename);
-
-    delete model;
-}
-
-
-/* 使用三角形来绘制模型，三角形的亮度与法线有关 */
-void draw_obj_normal_light() {
-
-    const char *model_filename = "./obj/african_head.obj";
-    const char *model_tga_filename = "./triangle_obj_normal.tga";
-
-    // 光照方向
-    Vec3f light_dir(0, 0, -1);
-
-    float gamma = 0.8;
-
-    auto model = new Model(model_filename);
-    auto image = TGAImage(width, height, TGAImage::RGB);
-
-    Vec2i screen_coords[3];
-    Vec3f world_coords[3];
-    for (int i = 0; i < model->nfaces(); i++) {
+    // 构造 locations
+    vector<vector<Location>> location_model;
+    for (int i = 0; i < model.nfaces(); ++i) {
+        vector<Location> location_face;
         for (int j = 0; j < 3; ++j) {
-            auto v = model->vert(i, j);     // 第 i 个三角形的第 j 个顶点
-            world_coords[j] = Vec3f(v.x, v.y, v.z);
-            screen_coords[j] = Vec2i((v.x + 1.) * width / 2., (v.y + 1.) * height / 2.);
+            vec3 pos = model.vert(i, j);
+            vec3 normal = model.normal(i, j);
+            vec2 uv = model.uv(i, j);
+            location_face.emplace_back(pos, normal, uv);
         }
-
-        // 叉积计算法向量
-        Vec3f n = (world_coords[2] - world_coords[0]) ^(world_coords[1] - world_coords[0]);
-        n.normalize();
-
-        // 光照强度
-        float intensity = n * light_dir;
-        if (intensity < 0)      // 剔除背对着的三角形
-            continue;
-        int light = intensity * 255 * gamma;
-        triangle(screen_coords[0], screen_coords[1], screen_coords[2],
-                 image,
-                 TGAColor(light, light, light, 255));
+        location_model.push_back(location_face);
     }
 
-    image.write_tga_file(model_tga_filename);
-}
+    // 摄像机和光照方向
+    vec3 camera_pos(0, 0, 0);
+    vec3 camera_target(0, 0, -1);
+    vec3 light_pos(0, 0.3, 1);
+    vec3 y_up(0, 1, 0);
 
-/* 基于 z-buffer 来绘制obj，三角形法线光照强度也有 */
-void draw_obj_zbuffer() {
+    // view, projection, view_port 矩阵
+    mat<4, 4> view_matrix = lookat(camera_pos, camera_target, y_up);
+    mat<4, 4> projection_matrix = projection(100, 100, 100, 400);
 
-    const char *model_filename = "./obj/african_head.obj";
-    const char *model_tga_filename = "./triangle_obj_zbuffer.tga";
+    // shader
+    PhongShader phong_shader;
+    phong_shader.light_pos = light_pos;
+    phong_shader.camera_pos = camera_pos;
+    phong_shader.model_matrix = model_matrix;
+    phong_shader.model_iv_matrix = model_matrix.invert();
+    phong_shader.view_matrix = view_matrix;
+    phong_shader.projection_matrix = projection_matrix;
+    phong_shader.diffuse_texture = diffuse_texture;
+    phong_shader.normal_texture = normal_texture;
+    phong_shader.specular_texture = spec_texture;
 
-    // 光照方向
-    Vec3f light_dir(0, 0, -1);
-
-    float gamma = 0.8;
-
-    auto model = new Model(model_filename);
-    auto image = TGAImage(width, height, TGAImage::RGB);
-
-    // z-buffer
-    auto zbuffer = vector<vector<float>>(height, vector<float>(width, INT32_MIN));
-
-    Vec3f screen_coords[3];
-    Vec3f world_coords[3];
-    for (int i = 0; i < model->nfaces(); i++) {
-        for (int j = 0; j < 3; ++j) {
-            auto v = model->vert(i, j);     // 第 i 个三角形的第 j 个顶点
-            world_coords[j] = Vec3f(v.x, v.y, v.z);
-            screen_coords[j] = Vec3f((v.x + 1.f) * width / 2, (v.y + 1.f) * height / 2, v.z);
-        }
-
-        // 叉积计算法向量
-        Vec3f n = (world_coords[2] - world_coords[0]) ^(world_coords[1] - world_coords[0]);
-        n.normalize();
-
-        // 光照强度
-        float intensity = n * light_dir;
-        if (intensity < 0)      // 剔除背对着的三角形
-            continue;
-        int light = intensity * 255 * gamma;
-        triangle_z_buffer(screen_coords[0], screen_coords[1], screen_coords[2],
-                          zbuffer, image,
-                          TGAColor(light, light, light, 255));
+    // 绘制模型
+    for (const auto &f: location_model) {
+        triangle(out_image, z_buffer, phong_shader, f);
     }
 
-    image.write_tga_file(model_tga_filename);
+    out_image.write_tga_file(tga_filename);
 }
 
 
 // ============================================================================
 int main() {
-    test_draw_triangle();
-    draw_triangle_obj();
-    draw_obj_normal_light();
-    draw_obj_zbuffer();
-
-    cout << "write to file ojbk." << endl;
+    render_obj();
+    cout << "wirte to file objk." << endl;
 }
